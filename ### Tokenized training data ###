@@ -1,0 +1,39 @@
+### Tokenized training data ###
+~/moses/scripts/tokenizer/tokenizer.perl -l hi < ~/corpus/split/train.hi > ~/corpus/split/train.tok.hi
+~/moses/scripts/tokenizer/tokenizer.perl -l en < ~/corpus/split/train.en > ~/corpus/split/train.tok.en
+
+### Language model training ###
+mkdir ~/lm
+cd ~/lm
+~/moses/bin/lmplz -o 3 --discount_fallback <~/corpus/split/train.tok.hi > train.tok.arpa.hi
+~/moses/bin/build_binary train.arpa.hi train.blm.hi
+echo "hello" | ~/moses/bin/query train.blm.hi
+
+### Training Translation System ###
+mkdir ~/working
+cd ~/working
+nohup nice ~/moses/scripts/training/train-model.perl -root-dir train -corpus ~/corpus/split/train.tok 
+\ -f en -e hi -alignment grow-diag-final-and -reordering msd-bidirectional-fe 
+\ -lm 0:3:$HOME/lm/train.blm.hi:8 -external-bin-dir ~/moses/tools >& training.out &
+
+### Tokenized validation data ###
+cd ~/corpus
+~/moses/scripts/tokenizer/tokenizer.perl -l en < ~/corpus/split/validate.en > ~/corpus/split/validate.tok.en
+~/moses/scripts/tokenizer/tokenizer.perl -l hi < ~/corpus/split/validate.hi > ~/corpus/split/validate.tok.hi
+
+### Tuning ###
+cd ~/working
+nohup nice ~/moses/scripts/training/mert-moses.pl ~/corpus/split/validate.tok.en 
+\ ~/corpus/split/validate.tok.hi ~/moses/bin/moses train/model/moses.ini --mertdir 
+\ ~/moses/bin/ --decoder-flags "-threads all" &> mert.out &
+
+### Tokenized test data ###
+cd ~/corpus
+~/moses/scripts/tokenizer/tokenizer.perl -l en < ~/corpus/split/test.en > ~/corpus/split/test.tok.en
+~/moses/scripts/tokenizer/tokenizer.perl -l hi < ~/corpus/split/test.hi > ~/corpus/split/test.tok.hi
+
+### Test output & BLEU ###
+cd ~/working
+nohup nice ~/moses/bin/moses -f ~/working/mert-work/moses.ini < ~/corpus/split/test.tok.en > 
+\ ~/working/test.translated.hi 2> ~/working/test.out 
+~/moses/scripts/generic/multi-bleu.perl -lc ~/corpus/split/test.tok.hi < ~/working/test.translated.hi
